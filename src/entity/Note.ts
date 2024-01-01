@@ -15,9 +15,6 @@ export class Note {
   @Column()
   note: number;
 
-  @Column({ type: "date" })
-  annee: Date;
-
   // Many progress entries can belong to one student
   @ManyToOne(() => Student, { eager: true })
   @JoinTable()

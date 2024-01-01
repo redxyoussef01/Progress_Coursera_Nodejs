@@ -1,5 +1,5 @@
-import { group } from "console";
 import * as express from "express";
+import { Note } from "./entity/Note";
 import { AppDataSource } from "./data-source";
 import { FiliereAnnee } from "./entity/FiliereAnnee";
 import { Groupe } from "./entity/Groupe";
@@ -9,14 +9,16 @@ import { Professeur } from "./entity/Professeur";
 import { Annee } from "./entity/Annee";
 import { Filiere } from "./entity/Filiere";
 import { Course } from "./entity/Course";
+import { Enseigner } from "./entity/Enseigner";
 const bcrypt = require("bcrypt");
+const cors = require("cors");
 
 const { getRepository } = require("typeorm");
 const app = express();
 const bodyParser = require("body-parser");
 
 app.use(bodyParser.json());
-
+app.use(cors());
 app.get("/annees", async (req, res) => {
   try {
     const Annees = await AppDataSource.manager.find(Annee, {});
@@ -391,7 +393,7 @@ app.post("/students", async (req, res) => {
     const newAccount = new Account();
     newAccount.email = email;
     newAccount.password = hashedPassword;
-    newAccount.type = type;
+    newAccount.type = "student";
 
     // Save the new account to the Account repository
     const accountRepository = AppDataSource.getRepository(Account);
@@ -510,7 +512,28 @@ app.post("/login", async (req, res) => {
     // At this point, the email and password are valid
     // You can implement additional logic here, such as creating and returning a JWT token
 
-    res.status(200).json({ message: "Login successful" });
+    // Prepare the response object
+    const response = {
+      message: "Login successful",
+      userId: account.id,
+      type: account.type,
+      groupeId: null,
+    };
+
+    // If the account type is student, fetch the groupeId
+    if (account.type === "student") {
+      const studentInfo = await AppDataSource.manager.findOne(Student, {
+        where: { account: { id: account.id } },
+        relations: ["groupe"], // Include the 'groupe' relation
+      });
+
+      // Assuming studentInfo contains a property named 'groupe'
+      if (studentInfo) {
+        response.groupeId = studentInfo.groupe?.id; // Adjust the property name based on your entity
+      }
+    }
+
+    res.status(200).json(response);
   } catch (error) {
     console.error("Error during login:", error.message);
     res
@@ -687,11 +710,11 @@ app.get("/courses", async (req, res) => {
 });
 
 app.get("/courses/:id", async (req, res) => {
-  const courseId = parseInt(req.params.id, 10);
+  const groupeId = parseInt(req.params.id, 10);
 
   try {
-    const course = await AppDataSource.manager.findOne(Course, {
-      where: { id: courseId },
+    const course = await AppDataSource.manager.findOne(Enseigner, {
+      where: { id: groupeId },
     });
 
     if (!course) {
@@ -707,7 +730,99 @@ app.get("/courses/:id", async (req, res) => {
   }
 });
 
-const port = 3000;
+// Get all notes
+app.get("/notes", async (req, res) => {
+  try {
+    const notes = await AppDataSource.manager.find(Note, {
+      relations: ["student", "course"], // Include related entities
+    });
+    res.json(notes);
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", details: error.message });
+  }
+});
+
+// Get note by ID
+app.get("/notes/:id", async (req, res) => {
+  const noteId = parseInt(req.params.id, 10);
+
+  try {
+    const note = await AppDataSource.manager.findOne(Note, {
+      where: { id: noteId },
+      relations: ["student", "course"], // Include related entities
+    });
+
+    if (!note) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    res.json(note);
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", details: error.message });
+  }
+});
+
+app.get("/enseigner/:id", async (req, res) => {
+  const GroupeId = parseInt(req.params.id, 10);
+
+  try {
+    const enseigners = await AppDataSource.manager.find(Enseigner, {
+      where: { Groupe: { id: GroupeId } },
+      relations: ["professeur", "Groupe", "course"], // Eager load related entities
+    });
+    if (!enseigners) {
+      return res.status(404).json({ error: "Enseigner not found" });
+    }
+
+    res.json(enseigners);
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", details: error.message });
+  }
+});
+
+const noteAnneeRepository = AppDataSource.getRepository(Note);
+
+app.post("/note", async (req, res) => {
+  try {
+    const { studentId, courseId, note } = req.body;
+    const student = await AppDataSource.manager.findOne(Student, {
+      where: { account: studentId },
+    });
+    const course = await AppDataSource.manager.findOne(Course, {
+      where: { id: courseId },
+    });
+
+    if (!student || !course) {
+      return res.status(404).json({ error: "Student or Course not found" });
+    }
+
+    const newNote = new Note();
+    newNote.note = note;
+    newNote.student = student;
+    newNote.course = course;
+
+    // Save the new note
+    await noteAnneeRepository.save(newNote);
+
+    res.status(201).json(newNote);
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", details: error.message });
+  }
+});
+
+const port = 3001;
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
