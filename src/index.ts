@@ -769,12 +769,24 @@ app.get("/notes/:id", async (req, res) => {
 });
 
 app.get("/enseigner/:id", async (req, res) => {
-  const GroupeId = parseInt(req.params.id, 10);
+  const professeurId = parseInt(req.params.id, 10);
 
   try {
+    const professeur = await AppDataSource.manager.findOne(Professeur, {
+      where: { account: { id: professeurId } },
+      relations: [], // Eager load related entities
+    });
+
     const enseigners = await AppDataSource.manager.find(Enseigner, {
-      where: { Groupe: { id: GroupeId } },
-      relations: ["professeur", "Groupe", "course"], // Eager load related entities
+      where: { professeur: { id: professeur.id } },
+      relations: [
+        "professeur",
+        "course",
+        "Groupe",
+        "Groupe.filiereAnnee",
+        "Groupe.filiereAnnee.annee",
+        "Groupe.filiereAnnee.filiere",
+      ], // Eager load related entities
     });
     if (!enseigners) {
       return res.status(404).json({ error: "Enseigner not found" });
@@ -796,6 +808,7 @@ app.post("/note", async (req, res) => {
     const { studentId, courseId, note } = req.body;
     const student = await AppDataSource.manager.findOne(Student, {
       where: { account: studentId },
+      relations: [],
     });
     const course = await AppDataSource.manager.findOne(Course, {
       where: { id: courseId },
