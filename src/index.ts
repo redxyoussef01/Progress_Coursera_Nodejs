@@ -10,6 +10,7 @@ import { Annee } from "./entity/Annee";
 import { Filiere } from "./entity/Filiere";
 import { Course } from "./entity/Course";
 import { Enseigner } from "./entity/Enseigner";
+import { Not } from "typeorm";
 const bcrypt = require("bcrypt");
 const cors = require("cors");
 
@@ -827,6 +828,35 @@ app.post("/note", async (req, res) => {
     await noteAnneeRepository.save(newNote);
 
     res.status(201).json(newNote);
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", details: error.message });
+  }
+});
+
+app.put("/note/:id", async (req, res) => {
+  try {
+    const noteId = parseInt(req.params.id, 10);
+    const { note: newNoteValue } = req.body;
+
+    // Check if the note with the given ID exists
+    const existingNote = await AppDataSource.manager.findOne(Note, {
+      where: { id: noteId },
+    });
+
+    if (!existingNote) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+
+    // If the note exists, update its value
+    existingNote.note = newNoteValue;
+
+    // Save the updated note
+    await noteAnneeRepository.save(existingNote);
+
+    res.status(200).json(existingNote);
   } catch (error) {
     console.error(error);
     res
